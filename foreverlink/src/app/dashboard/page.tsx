@@ -40,7 +40,7 @@ export default function Dashboard() {
 
       setLoading(false);
 
-      const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const { data: listener } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
         setUser(session?.user ?? null);
       });
       subscription = listener;

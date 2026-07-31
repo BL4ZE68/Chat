@@ -21,7 +21,7 @@ export default function Chat({ friendshipId }: { friendshipId: string | null }) 
       setMessages(list || []);
 
       channel = supabase.channel('public:messages')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `friendship_id=eq.${friendshipId}` }, (payload) => {
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `friendship_id=eq.${friendshipId}` }, (payload: any) => {
           setMessages((m) => [...m, payload.new]);
         })
         .subscribe();
