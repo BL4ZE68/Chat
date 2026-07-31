@@ -3,6 +3,8 @@
 -- Notes: SECURITY DEFINER is used to allow a controlled update that would otherwise be blocked by RLS for the joining user.
 -- The function performs strict checks and records an audit row. Review owner and privileges before deployment.
 
+DROP FUNCTION IF EXISTS public.join_friendship(TEXT);
+
 CREATE OR REPLACE FUNCTION public.join_friendship(p_code TEXT)
 RETURNS UUID AS $$
 DECLARE
@@ -48,7 +50,7 @@ BEGIN
 
   RETURN v_friendship_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Audit table
 CREATE TABLE IF NOT EXISTS friendship_join_logs (
@@ -62,4 +64,5 @@ CREATE TABLE IF NOT EXISTS friendship_join_logs (
 -- 1) SECURITY DEFINER runs with the function owner's privileges. Ensure the owner is a tightly controlled role (the project owner), and do NOT set the owner to 'postgres' or a superuser accessible by others.
 -- 2) The function validates auth.uid() and refuses self-joins and reused codes, and logs every successful join.
 -- 3) Grant execute only to the authenticated role to limit who can call it.
+REVOKE EXECUTE ON FUNCTION public.join_friendship(TEXT) FROM public;
 GRANT EXECUTE ON FUNCTION public.join_friendship(TEXT) TO authenticated;

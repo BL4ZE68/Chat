@@ -7,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- Users (profile) - optional companion to auth.users
 -- In Supabase it's recommended to use auth.users for auth and a profiles table for metadata.
 CREATE TABLE IF NOT EXISTS users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY,
   email TEXT UNIQUE,
   nickname TEXT,
   avatar_url TEXT,
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS friendships (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_1_id UUID NOT NULL,
-  user_2_id UUID NOT NULL,
+  user_2_id UUID,
   pairing_code TEXT UNIQUE,
   status TEXT DEFAULT 'pending', -- 'pending', 'active'
   met_since DATE,
@@ -175,6 +175,9 @@ CREATE POLICY "users_select_self_or_friend" ON users
          OR (f.user_2_id = users.id AND f.user_1_id = auth.uid())
     )
   );
+
+CREATE POLICY "users_insert_self" ON users
+  FOR INSERT WITH CHECK (auth.uid() = id);
 
 CREATE POLICY "users_update_self" ON users
   FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
