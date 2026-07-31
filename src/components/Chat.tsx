@@ -8,7 +8,17 @@ export default function Chat({ friendshipId }: { friendshipId: string | null }) 
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [mode, setMode] = useState<'text' | 'image' | 'capsule'>('text');
+  const [capsuleDate, setCapsuleDate] = useState('');
+  
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  // Force a re-render every minute to update capsule locks
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => t + 1), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let channel: any;
@@ -34,13 +44,33 @@ export default function Chat({ friendshipId }: { friendshipId: string | null }) 
 
   async function send() {
     if (!text.trim() || !friendshipId) return;
+    if (mode === 'capsule' && !capsuleDate) return;
+    
     setLoading(true);
     const { data: userData } = await supabase.auth.getUser();
     const senderId = userData.user?.id;
-    const payload = { friendship_id: friendshipId, sender_id: senderId, content: text.trim(), message_type: 'text' };
+    
+    const payload: any = { 
+      friendship_id: friendshipId, 
+      sender_id: senderId, 
+      content: text.trim(), 
+      message_type: mode 
+    };
+
+    if (mode === 'image') {
+      payload.media_url = text.trim();
+      payload.content = '📸 Image';
+    } else if (mode === 'capsule') {
+      payload.is_capsule = true;
+      payload.unlock_at = new Date(capsuleDate).toISOString();
+    }
+
     const { error } = await supabase.from('messages').insert(payload);
     if (error) console.error(error);
+    
     setText('');
+    setMode('text');
+    setCapsuleDate('');
     setLoading(false);
   }
 
@@ -61,8 +91,10 @@ export default function Chat({ friendshipId }: { friendshipId: string | null }) 
     );
   }
 
+  const now = Date.now();
+
   return (
-    <div className="glass-card-static flex flex-col" style={{ height: '65vh' }}>
+    <div className="glass-card-static flex flex-col" style={{ height: '70vh' }}>
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 && (
@@ -75,15 +107,40 @@ export default function Chat({ friendshipId }: { friendshipId: string | null }) 
         )}
         {messages.map((m, i) => {
           const isMine = m.sender_id === userId;
+          
+          let content = <>{m.content}</>;
+          if (m.message_type === 'image' && m.media_url) {
+            content = <img src={m.media_url} alt="Shared media" className="rounded-lg max-w-full h-auto mt-1" style={{ maxHeight: '220px', objectFit: 'cover' }} />;
+          } else if (m.is_capsule) {
+            const unlockTime = m.unlock_at ? new Date(m.unlock_at).getTime() : 0;
+            if (unlockTime > now) {
+              content = (
+                <div className="flex flex-col items-center gap-2 p-2 text-sm italic opacity-90">
+                  <span className="text-2xl">🔒</span>
+                  <span className="text-center">Capsule verrouillée<br/>s&apos;ouvrira le {new Date(m.unlock_at).toLocaleDateString('fr-FR')}</span>
+                </div>
+              );
+            } else {
+              content = (
+                <div>
+                  <div className="text-xs mb-1 opacity-70 flex items-center gap-1">
+                    <span>⏳</span> Capsule ouverte
+                  </div>
+                  {m.content}
+                </div>
+              );
+            }
+          }
+
           return (
             <div
               key={m.id}
               className={`flex ${isMine ? 'justify-end' : 'justify-start'} animate-fadeIn`}
-              style={{ animationDelay: `${Math.min(i * 0.03, 0.5)}s`, opacity: 0 }}
+              style={{ animationDelay: `${Math.min(i * 0.03, 0.5)}s`, opacity: 0, animationFillMode: 'forwards' }}
             >
-              <div>
-                <div className={isMine ? 'bubble-mine' : 'bubble-theirs'}>
-                  {m.content}
+              <div style={{ maxWidth: '75%' }}>
+                <div className={isMine ? 'bubble-mine' : 'bubble-theirs'} style={{ overflowWrap: 'break-word' }}>
+                  {content}
                 </div>
                 <div
                   className={`text-xs mt-1 ${isMine ? 'text-right' : 'text-left'}`}
@@ -99,22 +156,55 @@ export default function Chat({ friendshipId }: { friendshipId: string | null }) 
       </div>
 
       {/* Input area */}
-      <div className="p-4" style={{ borderTop: '1px solid var(--border-glass)' }}>
+      <div className="p-4" style={{ borderTop: '1px solid var(--border-glass)', background: 'rgba(0,0,0,0.2)' }}>
+        
+        {/* Mode selector */}
+        <div className="flex gap-2 mb-3">
+          <button onClick={() => setMode('text')} className={`text-xs px-3 py-1 rounded-full transition-colors ${mode === 'text' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+            Texte
+          </button>
+          <button onClick={() => setMode('image')} className={`text-xs px-3 py-1 rounded-full transition-colors ${mode === 'image' ? 'bg-pink-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+            Image (URL)
+          </button>
+          <button onClick={() => setMode('capsule')} className={`text-xs px-3 py-1 rounded-full transition-colors ${mode === 'capsule' ? 'bg-orange-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+            Capsule
+          </button>
+        </div>
+
+        {mode === 'capsule' && (
+          <div className="mb-3 animate-fadeIn">
+            <label className="text-xs text-gray-300 block mb-1">Date d&apos;ouverture :</label>
+            <input 
+              type="datetime-local" 
+              value={capsuleDate}
+              onChange={e => setCapsuleDate(e.target.value)}
+              className="input-field text-sm p-2"
+              style={{ backgroundColor: 'rgba(0,0,0,0.3)' }}
+            />
+          </div>
+        )}
+
         <div className="flex gap-3 items-end">
-          <input
+          <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="input-field flex-1"
-            placeholder="Écrire un message..."
+            className="input-field flex-1 resize-none"
+            rows={mode === 'image' ? 1 : 2}
+            placeholder={
+              mode === 'image' ? "Collez le lien de l'image (ex: https://.../photo.jpg)" : 
+              mode === 'capsule' ? "Message secret à envoyer dans le futur..." : 
+              "Écrire un message..."
+            }
             id="chat-input"
+            style={{ minHeight: mode === 'image' ? '44px' : '60px' }}
           />
           <button
             onClick={send}
-            className="btn-primary px-4 py-3"
-            disabled={loading || !text.trim()}
+            className="btn-primary px-4 h-[60px]"
+            disabled={loading || !text.trim() || (mode === 'capsule' && !capsuleDate)}
             id="chat-send"
-            style={{ borderRadius: 'var(--radius-md)' }}
+            style={{ borderRadius: 'var(--radius-md)', height: mode === 'image' ? '44px' : '60px' }}
           >
             {loading ? (
               <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
